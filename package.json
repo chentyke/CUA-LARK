@@ -1,0 +1,35 @@
+{
+  "name": "lark-cua",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CUA-Lark intelligent desktop testing agent powered by UI-TARS.",
+  "bin": {
+    "lark-cua": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "cua": "tsx src/cli.ts",
+    "dev": "tsx src/server.ts",
+    "frontend": "tsx src/server.ts",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ui-tars/operator-nut-js": "1.2.3",
+    "@ui-tars/sdk": "1.2.3",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "openai": "^5.5.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.8"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

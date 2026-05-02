@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+artifacts/runs/**
+!artifacts/runs/.gitkeep
+coverage/
+.DS_Store
+npm-debug.log*
+*.log
+.cache/

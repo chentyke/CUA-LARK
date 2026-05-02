@@ -1,0 +1,16 @@
+{
+  "lark": {
+    "appName": "Lark",
+    "appPath": "/Applications/Lark.app",
+    "testChat": "",
+    "testAttendee": ""
+  },
+  "agent": {
+    "maxSteps": 25,
+    "defaultTimeoutMs": 180000,
+    "retryOnVerificationFailure": true
+  },
+  "artifacts": {
+    "runsDir": "artifacts/runs"
+  }
+}

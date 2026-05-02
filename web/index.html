@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CUA-Lark Console</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="kicker">CUA-Lark / Desktop Agent</p>
+          <h1>飞书桌面端视觉操控台</h1>
+        </div>
+        <div class="status-strip" id="configStrip">
+          <span>Loading config</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <form class="panel command-panel" id="runForm">
+          <div class="panel-title">
+            <span>Run</span>
+            <label class="switch">
+              <input id="dryRun" type="checkbox" />
+              <span>Dry run</span>
+            </label>
+          </div>
+
+          <div class="mode-tabs" role="tablist" aria-label="Run mode">
+            <button type="button" class="active" data-mode="instruction">指令</button>
+            <button type="button" data-mode="case">用例</button>
+            <button type="button" data-mode="suite">套件</button>
+          </div>
+
+          <div class="field instruction-field">
+            <label for="instruction">自然语言指令</label>
+            <textarea
+              id="instruction"
+              rows="7"
+              placeholder="例如：当前飞书已打开测试联系人聊天窗口，输入“测试消息”并发送，确认发送成功后结束。"
+            ></textarea>
+          </div>
+
+          <div class="field case-field hidden">
+            <label for="caseId">标准用例</label>
+            <select id="caseId"></select>
+          </div>
+
+          <div class="field suite-field hidden">
+            <label for="suite">套件</label>
+            <select id="suite">
+              <option value="standard">standard - IM / Docs / Calendar</option>
+              <option value="demo">demo - Cross-product</option>
+            </select>
+          </div>
+
+          <button class="run-button" type="submit">
+            <span>启动 CUA</span>
+            <strong>⌘</strong>
+          </button>
+        </form>
+
+        <section class="panel monitor-panel">
+          <div class="panel-title">
+            <span>Monitor</span>
+            <button id="doctorButton" type="button">Doctor</button>
+          </div>
+          <div class="job-card" id="activeJob">
+            <span class="muted">No active run</span>
+          </div>
+          <pre class="log" id="logBox"></pre>
+        </section>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-title">
+          <span>Runs</span>
+          <button id="refreshJobs" type="button">Refresh</button>
+        </div>
+        <div class="runs" id="runs"></div>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
