@@ -29,7 +29,9 @@ export function loadConfig(configPath = "cua.config.json"): AppConfig {
     agent: {
       maxSteps: numberEnv("CUA_MAX_STEPS", raw.agent?.maxSteps ?? 25),
       defaultTimeoutMs: raw.agent?.defaultTimeoutMs ?? 180000,
-      retryOnVerificationFailure: raw.agent?.retryOnVerificationFailure ?? true
+      retryOnVerificationFailure: raw.agent?.retryOnVerificationFailure ?? true,
+      maxAttempts: numberEnv("CUA_MAX_ATTEMPTS", raw.agent?.maxAttempts ?? 5),
+      retryDelayMs: numberEnv("CUA_RETRY_DELAY_MS", raw.agent?.retryDelayMs ?? 8000)
     },
     artifacts: {
       runsDir: env("CUA_SCREENSHOT_DIR", raw.artifacts?.runsDir ?? "artifacts/runs")
@@ -47,6 +49,8 @@ export function validateRuntimeConfig(config: AppConfig, dryRun: boolean): strin
   }
   if (!config.lark.appName) issues.push("LARK_APP_NAME is required.");
   if (config.agent.maxSteps < 1) issues.push("CUA_MAX_STEPS must be at least 1.");
+  if (config.agent.maxAttempts < 1) issues.push("CUA_MAX_ATTEMPTS must be at least 1.");
+  if (config.agent.retryDelayMs < 0) issues.push("CUA_RETRY_DELAY_MS must not be negative.");
   return issues;
 }
 

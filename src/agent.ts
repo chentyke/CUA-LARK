@@ -1,6 +1,7 @@
 import path from "node:path";
-import type { AppConfig, CaseRunResult, PlannedCase, StepResult, VerificationResult } from "./types.js";
+import type { AppConfig, CaseRunResult, PlannedCase, PlannedStep, StepResult, VerificationResult } from "./types.js";
 import { durationMs, nowIso } from "./time.js";
+import { compatibleSystemPrompt, modelConfigWithCompat } from "./modelCompat.js";
 import { PopupGuard } from "./popupGuard.js";
 import { Verifier } from "./verifier.js";
 
@@ -35,15 +36,46 @@ export class LarkAgent {
 
     try {
       await operator.focusApp();
-      for (const step of plannedCase.steps) {
-        const stepResult = await this.runStep(plannedCase, step.objective, step.index, operator);
-        steps.push(stepResult);
-        if (stepResult.status === "failed") break;
+      const maxAttempts = this.config.agent.retryOnVerificationFailure ? this.config.agent.maxAttempts : 1;
+      let verification: VerificationResult | undefined;
+      let failureReason: string | undefined;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const attemptSteps = attempt === 1 ? plannedCase.steps : buildRetrySteps(plannedCase, attempt, failureReason);
+        try {
+          for (const step of attemptSteps) {
+            const stepResult = await this.runStep(plannedCase, step.objective, steps.length + 1, operator);
+            steps.push(stepResult);
+            if (stepResult.status === "failed") break;
+          }
+        } catch (error) {
+          const retryable = !isClearlyFatalError(error);
+          failureReason = error instanceof Error ? error.message : String(error);
+          steps.push(buildFailedStep(steps.length + 1, attempt, failureReason, operator));
+          if (!retryable || attempt >= maxAttempts) throw error;
+          await waitForRetry(this.config.agent.retryDelayMs, attempt, error);
+          continue;
+        }
+
+        await operator.screenshot();
+        verification = await this.verifier.verify({
+          instruction: plannedCase.instruction,
+          successCriteria: plannedCase.successCriteria,
+          screenshots: operator.getScreenshots(),
+          dryRun: false
+        });
+        if (verification.passed) break;
+
+        failureReason = verification.reason;
+        if (attempt < maxAttempts) {
+          steps.push(buildRetryMarkerStep(steps.length + 1, attempt + 1, verification, operator));
+          await waitForRetry(this.config.agent.retryDelayMs, attempt);
+          continue;
+        }
       }
 
-      const verification = await this.verifyWithRetry(plannedCase, operator, steps, false);
       const finishedAt = nowIso();
-      const status = steps.every((step) => step.status === "passed") && verification.passed ? "passed" : "failed";
+      const status = verification?.passed ? "passed" : "failed";
 
       return {
         id: plannedCase.id,
@@ -59,7 +91,7 @@ export class LarkAgent {
         screenshots: operator.getScreenshots(),
         modelCalls: steps.reduce((total, step) => total + step.modelCalls, 0),
         verification,
-        failureReason: status === "failed" ? verification.reason : undefined
+        failureReason: status === "failed" ? verification?.reason ?? failureReason : undefined
       };
     } catch (error) {
       const finishedAt = nowIso();
@@ -87,13 +119,11 @@ export class LarkAgent {
     const eventsBefore = operator.getEvents().length;
     let modelCalls = 0;
     const { GUIAgent } = await import("@ui-tars/sdk");
+    const systemPrompt = compatibleSystemPrompt(this.config.vlm.baseURL);
     const agent = new GUIAgent({
-      model: {
-        baseURL: this.config.vlm.baseURL,
-        apiKey: this.config.vlm.apiKey,
-        model: this.config.vlm.model
-      },
+      model: modelConfigWithCompat(this.config.vlm),
       operator: operator as never,
+      ...(systemPrompt ? { systemPrompt } : {}),
       maxLoopCount: Math.min(plannedCase.maxSteps, this.config.agent.maxSteps),
       logger: silentLogger,
       onData: ({ data }: { data: unknown }) => {
@@ -120,48 +150,6 @@ export class LarkAgent {
       modelCalls,
       events: events as never
     };
-  }
-
-  private async verifyWithRetry(
-    plannedCase: PlannedCase,
-    operator: RuntimeOperator,
-    steps: StepResult[],
-    dryRun: boolean
-  ): Promise<VerificationResult> {
-    let verification = await this.verifier.verify({
-      instruction: plannedCase.instruction,
-      successCriteria: plannedCase.successCriteria,
-      screenshots: operator.getScreenshots(),
-      dryRun
-    });
-
-    if (verification.passed || dryRun || !this.config.agent.retryOnVerificationFailure) return verification;
-
-    const retryStart = nowIso();
-    try {
-      await operator.screenshot();
-      verification = await this.verifier.verify({
-        instruction: `${plannedCase.instruction}\n\nRetry verification after fresh screenshot.`,
-        successCriteria: plannedCase.successCriteria,
-        screenshots: operator.getScreenshots(),
-        dryRun
-      });
-    } catch (error) {
-      const retryEnd = nowIso();
-      steps.push({
-        index: steps.length + 1,
-        objective: "Self-healing verification retry",
-        status: "failed",
-        startedAt: retryStart,
-        finishedAt: retryEnd,
-        durationMs: durationMs(retryStart, retryEnd),
-        screenshots: operator.getScreenshots(),
-        modelCalls: 0,
-        events: operator.getEvents() as never,
-        failureReason: error instanceof Error ? error.message : String(error)
-      });
-    }
-    return verification;
   }
 
   private async runDryCase(plannedCase: PlannedCase): Promise<CaseRunResult> {
@@ -224,4 +212,111 @@ function estimateModelCalls(data: unknown): number {
   if (!data || typeof data !== "object") return 0;
   const maybeData = data as { conversations?: Array<{ from?: string }> };
   return maybeData.conversations?.some((entry) => entry.from === "gpt") ? 1 : 0;
+}
+
+function buildRetrySteps(plannedCase: PlannedCase, attempt: number, previousFailure?: string): PlannedStep[] {
+  return [
+    {
+      index: attempt,
+      objective: [
+        `Continue the Lark desktop task from the current screen. This is retry attempt ${attempt}.`,
+        `Original instruction: ${plannedCase.instruction}`,
+        previousFailure ? `Previous verification/error reason: ${previousFailure}` : undefined,
+        `Success criteria:\n${plannedCase.successCriteria.map((item) => `- ${item}`).join("\n")}`,
+        "Do not redo work that is already visibly complete.",
+        "Focus only on missing requirements, especially permissions, recipients, formatting, final submit buttons, and visible confirmation state.",
+        "Before finishing, leave the strongest available success evidence visible on screen, such as the sent message, share dialog recipient with edit permission, success toast, or final created item."
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      successCriteria: plannedCase.successCriteria
+    }
+  ];
+}
+
+function buildFailedStep(index: number, attempt: number, reason: string, operator: RuntimeOperator): StepResult {
+  const finishedAt = nowIso();
+  return {
+    index,
+    objective: `Attempt ${attempt} hit a retryable execution error.`,
+    status: "skipped",
+    startedAt: finishedAt,
+    finishedAt,
+    durationMs: 0,
+    screenshots: operator.getScreenshots(),
+    modelCalls: 0,
+    events: operator.getEvents() as never,
+    failureReason: reason
+  };
+}
+
+function buildRetryMarkerStep(
+  index: number,
+  nextAttempt: number,
+  verification: VerificationResult,
+  operator: RuntimeOperator
+): StepResult {
+  const finishedAt = nowIso();
+  return {
+    index,
+    objective: `Verification failed; retrying with corrective attempt ${nextAttempt}.`,
+    status: "skipped",
+    startedAt: finishedAt,
+    finishedAt,
+    durationMs: 0,
+    screenshots: operator.getScreenshots(),
+    modelCalls: 0,
+    events: [
+      ...operator.getEvents(),
+      {
+        timestamp: finishedAt,
+        type: "verification",
+        message: verification.reason,
+        data: verification
+      }
+    ] as never,
+    failureReason: verification.reason
+  };
+}
+
+async function waitForRetry(baseDelayMs: number, attempt: number, error?: unknown): Promise<void> {
+  const retryAfterMs = retryAfterFromError(error);
+  const delayMs = retryAfterMs ?? Math.min(Math.max(baseDelayMs, 0) * attempt, 60000);
+  if (delayMs <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function retryAfterFromError(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const maybe = error as { headers?: { get?: (name: string) => string | null }; response?: { headers?: { get?: (name: string) => string | null } } };
+  const value = maybe.headers?.get?.("retry-after") ?? maybe.response?.headers?.get?.("retry-after");
+  if (!value) return undefined;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : undefined;
+}
+
+export function isClearlyFatalError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const lower = message.toLowerCase();
+  if (/\b429\b/.test(lower) || lower.includes("rate limit") || lower.includes("tpm")) return false;
+  if (lower.includes("float_type") || lower.includes("frequency_penalty") || lower.includes("presence_penalty")) {
+    return true;
+  }
+  return [
+    "401",
+    "403",
+    "api key",
+    "unauthorized",
+    "forbidden",
+    "invalid model",
+    "model not found",
+    "vlm_base_url",
+    "vlm_api_key",
+    "vlm_model",
+    "accessibility permission",
+    "screen recording",
+    "not permitted",
+    "not authorized",
+    "application is not found"
+  ].some((needle) => lower.includes(needle));
 }

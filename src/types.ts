@@ -19,6 +19,8 @@ export interface AgentConfig {
   maxSteps: number;
   defaultTimeoutMs: number;
   retryOnVerificationFailure: boolean;
+  maxAttempts: number;
+  retryDelayMs: number;
 }
 
 export interface ArtifactsConfig {

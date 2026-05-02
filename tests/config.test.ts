@@ -6,6 +6,8 @@ describe("config", () => {
     const config = loadConfig("cua.config.json");
     expect(config.lark.appName).toBe("Lark");
     expect(config.agent.maxSteps).toBeGreaterThan(0);
+    expect(config.agent.maxAttempts).toBeGreaterThan(1);
+    expect(config.agent.retryDelayMs).toBeGreaterThanOrEqual(0);
   });
 
   it("allows dry-run without VLM credentials", () => {

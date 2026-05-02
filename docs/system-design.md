@@ -32,7 +32,8 @@ flowchart LR
 4. LarkAgent focuses Lark and runs UI-TARS against each objective.
 5. LarkOperator captures screenshots and delegates actions to NutJS.
 6. Verifier checks final visual state against the success criteria.
-7. Reporter aggregates status, duration, screenshots, model calls, and failure reasons.
+7. If verification fails, LarkAgent retries with a corrective objective that includes the failure reason and asks UI-TARS to leave success evidence visible.
+8. Reporter aggregates status, duration, screenshots, model calls, and failure reasons.
 
 ## Technology Choices
 
@@ -47,3 +48,4 @@ flowchart LR
 - No real credentials in repo files.
 - Test data is timestamped and should target disposable chats, docs, and calendar events.
 - Real runs require explicit removal of `--dry-run`.
+- Retry loops are bounded by `CUA_MAX_ATTEMPTS`; fatal credential and permission errors are not retried.

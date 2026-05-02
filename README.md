@@ -22,9 +22,21 @@ VLM_API_KEY=<your-key>
 VLM_MODEL=<your-ark-endpoint-id>
 LARK_TEST_CHAT=<safe-test-chat>
 LARK_TEST_ATTENDEE=<safe-test-attendee>
+CUA_MAX_ATTEMPTS=5
+CUA_RETRY_DELAY_MS=8000
 ```
 
 Do not commit `.env`. It is ignored by Git.
+
+For Xiaomi MiMo, use the OpenAI-compatible endpoint and model name from the MiMo console:
+
+```bash
+VLM_BASE_URL=https://api.xiaomimimo.com/v1
+VLM_API_KEY=<your-mimo-api-key>
+VLM_MODEL=mimo-v2.5-pro
+```
+
+MiMo's examples use numeric `frequency_penalty=0` and `presence_penalty=0`. CUA-Lark automatically normalizes UI-TARS requests for MiMo so those fields are not sent as `null`.
 
 ## Commands
 
@@ -62,6 +74,13 @@ Each run writes to `artifacts/runs/<run-id>/`:
 - `report.md`
 - `report.html`
 - `screenshots/`
+
+## Retry Behavior
+
+Real runs keep working until the final VLM verifier confirms the visible state, up to `CUA_MAX_ATTEMPTS`.
+Verification failures trigger a corrective UI-TARS attempt that continues from the current Lark screen and focuses on missing requirements.
+Transient model errors such as 429 rate limits wait for `CUA_RETRY_DELAY_MS` before retrying.
+Obvious fatal errors, such as invalid credentials or missing macOS permissions, stop immediately.
 
 ## Notes
 

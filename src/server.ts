@@ -62,7 +62,9 @@ async function route(request: http.IncomingMessage, response: http.ServerRespons
       model: config.vlm.model,
       baseURL: config.vlm.baseURL,
       hasApiKey: Boolean(config.vlm.apiKey),
-      runsDir: config.artifacts.runsDir
+      runsDir: config.artifacts.runsDir,
+      maxAttempts: config.agent.maxAttempts,
+      retryDelayMs: config.agent.retryDelayMs
     });
     return;
   }

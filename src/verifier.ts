@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import OpenAI from "openai";
+import { openAIClientCompatOptions } from "./modelCompat.js";
 import type { AppConfig, VerificationResult } from "./types.js";
 
 export class Verifier {
@@ -33,7 +34,8 @@ export class Verifier {
     const imageBase64 = await fs.readFile(latestScreenshot, "base64");
     const client = new OpenAI({
       baseURL: this.config.vlm.baseURL,
-      apiKey: this.config.vlm.apiKey
+      apiKey: this.config.vlm.apiKey,
+      ...openAIClientCompatOptions(this.config.vlm.baseURL)
     });
 
     const completion = await client.chat.completions.create({

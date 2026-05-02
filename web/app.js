@@ -66,6 +66,7 @@ async function init() {
     <span><strong>${escapeHtml(config.larkAppName)}</strong></span>
     <span> · ${escapeHtml(config.model || "no model")}</span>
     <span> · key ${config.hasApiKey ? "ready" : "missing"}</span>
+    <span> · retry ${escapeHtml(config.maxAttempts)}x / ${escapeHtml(config.retryDelayMs)}ms</span>
   `;
   els.caseId.innerHTML = cases.cases
     .map((testCase) => `<option value="${escapeHtml(testCase.id)}">${escapeHtml(testCase.id)} - ${escapeHtml(testCase.description)}</option>`)

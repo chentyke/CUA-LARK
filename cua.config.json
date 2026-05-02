@@ -8,7 +8,9 @@
   "agent": {
     "maxSteps": 25,
     "defaultTimeoutMs": 180000,
-    "retryOnVerificationFailure": true
+    "retryOnVerificationFailure": true,
+    "maxAttempts": 5,
+    "retryDelayMs": 8000
   },
   "artifacts": {
     "runsDir": "artifacts/runs"
