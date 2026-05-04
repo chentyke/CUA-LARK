@@ -1,4 +1,5 @@
 const state = {
+  page: "run",
   mode: "instruction",
   activeJobId: null,
   pollTimer: null,
@@ -24,6 +25,12 @@ const els = {
   doctorButton: document.querySelector("#doctorButton"),
   refreshJobs: document.querySelector("#refreshJobs")
 };
+
+document.querySelectorAll(".page-tabs button").forEach((button) => {
+  button.addEventListener("click", () => {
+    showPage(button.dataset.page);
+  });
+});
 
 document.querySelectorAll(".mode-tabs button").forEach((button) => {
   button.addEventListener("click", () => {
@@ -91,15 +98,36 @@ els.doctorButton.addEventListener("click", async () => {
 });
 
 els.refreshJobs.addEventListener("click", loadJobs);
+window.addEventListener("hashchange", () => showPage(pageFromHash()));
 
 await init();
 
 async function init() {
+  showPage(pageFromHash());
   const [, cases] = await Promise.all([loadConfig(), getJson("/api/cases")]);
   els.caseId.innerHTML = cases.cases
     .map((testCase) => `<option value="${escapeHtml(testCase.id)}">${escapeHtml(testCase.id)} - ${escapeHtml(testCase.description)}</option>`)
     .join("");
   await loadJobs();
+}
+
+function showPage(page) {
+  state.page = page === "llm" ? "llm" : "run";
+  document.querySelectorAll(".page-tabs button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.page === state.page);
+    button.setAttribute("aria-selected", String(button.dataset.page === state.page));
+  });
+  document.querySelectorAll("[data-page-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.pagePanel !== state.page);
+  });
+  const nextHash = state.page === "llm" ? "#llm" : "#run";
+  if (window.location.hash !== nextHash) {
+    history.replaceState(null, "", nextHash);
+  }
+}
+
+function pageFromHash() {
+  return window.location.hash.replace(/^#/, "") === "llm" ? "llm" : "run";
 }
 
 async function loadConfig() {

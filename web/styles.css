@@ -73,6 +73,14 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.top-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .status-strip {
   min-width: 320px;
   border-radius: 999px;
@@ -87,8 +95,56 @@ h1 {
   gap: 18px;
 }
 
+.page-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 92%, white);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.page-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.page-tabs button:hover {
+  background: #f0eee6;
+}
+
+.page-tabs button.active {
+  background: var(--ink);
+  color: #fffdf7;
+}
+
+.page-tabs button.active:hover {
+  background: var(--ink);
+}
+
+.page-view {
+  display: block;
+}
+
 .llm-panel {
-  margin-bottom: 18px;
+  max-width: 960px;
 }
 
 .llm-form {
@@ -347,6 +403,27 @@ a {
   .grid,
   .llm-form {
     grid-template-columns: 1fr;
+  }
+
+  .top-controls {
+    justify-content: stretch;
+  }
+
+  .page-tabs,
+  .status-strip {
+    width: 100%;
+  }
+
+  .status-strip {
+    min-width: 0;
+  }
+
+  .page-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-tabs button {
+    justify-content: center;
   }
 
   .llm-actions {
