@@ -1,11 +1,18 @@
 const state = {
   mode: "instruction",
   activeJobId: null,
-  pollTimer: null
+  pollTimer: null,
+  config: null
 };
 
 const els = {
   configStrip: document.querySelector("#configStrip"),
+  llmForm: document.querySelector("#llmForm"),
+  llmState: document.querySelector("#llmState"),
+  baseURL: document.querySelector("#baseURL"),
+  model: document.querySelector("#model"),
+  apiKey: document.querySelector("#apiKey"),
+  clearApiKey: document.querySelector("#clearApiKey"),
   runForm: document.querySelector("#runForm"),
   dryRun: document.querySelector("#dryRun"),
   instruction: document.querySelector("#instruction"),
@@ -51,6 +58,33 @@ els.runForm.addEventListener("submit", async (event) => {
   pollJob();
 });
 
+els.llmForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  els.llmState.textContent = "Saving";
+  const payload = {
+    baseURL: els.baseURL.value,
+    model: els.model.value,
+    apiKey: els.apiKey.value,
+    clearApiKey: els.clearApiKey.checked
+  };
+  const response = await fetch("/api/config/llm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    els.llmState.textContent = "Save failed";
+    showError(data.error || "Failed to save LLM config");
+    return;
+  }
+  els.apiKey.value = "";
+  els.clearApiKey.checked = false;
+  await loadConfig();
+  els.llmState.textContent = "Saved";
+  window.setTimeout(loadConfig, 1200);
+});
+
 els.doctorButton.addEventListener("click", async () => {
   const data = await getJson("/api/doctor");
   els.logBox.textContent = data.text;
@@ -61,17 +95,29 @@ els.refreshJobs.addEventListener("click", loadJobs);
 await init();
 
 async function init() {
-  const [config, cases] = await Promise.all([getJson("/api/config"), getJson("/api/cases")]);
+  const [, cases] = await Promise.all([loadConfig(), getJson("/api/cases")]);
+  els.caseId.innerHTML = cases.cases
+    .map((testCase) => `<option value="${escapeHtml(testCase.id)}">${escapeHtml(testCase.id)} - ${escapeHtml(testCase.description)}</option>`)
+    .join("");
+  await loadJobs();
+}
+
+async function loadConfig() {
+  const config = await getJson("/api/config");
+  state.config = config;
   els.configStrip.innerHTML = `
     <span><strong>${escapeHtml(config.larkAppName)}</strong></span>
     <span> · ${escapeHtml(config.model || "no model")}</span>
     <span> · key ${config.hasApiKey ? "ready" : "missing"}</span>
     <span> · retry ${escapeHtml(config.maxAttempts)}x / ${escapeHtml(config.retryDelayMs)}ms</span>
   `;
-  els.caseId.innerHTML = cases.cases
-    .map((testCase) => `<option value="${escapeHtml(testCase.id)}">${escapeHtml(testCase.id)} - ${escapeHtml(testCase.description)}</option>`)
-    .join("");
-  await loadJobs();
+  els.baseURL.value = config.baseURL || "";
+  els.model.value = config.model || "";
+  els.llmState.innerHTML = `
+    <span class="state-dot ${config.baseURL && config.model && config.hasApiKey ? "ready" : "warn"}"></span>
+    ${config.hasApiKey ? "Key ready" : "Key missing"}
+  `;
+  return config;
 }
 
 async function pollJob() {

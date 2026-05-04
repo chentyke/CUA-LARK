@@ -35,6 +35,13 @@ interface RunRequest {
   dryRun?: boolean;
 }
 
+interface LlmConfigRequest {
+  baseURL?: string;
+  model?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+
 const ROOT = process.cwd();
 const PUBLIC_DIR = path.join(ROOT, "web");
 const PORT = Number(process.env.PORT ?? 4173);
@@ -65,6 +72,18 @@ async function route(request: http.IncomingMessage, response: http.ServerRespons
       runsDir: config.artifacts.runsDir,
       maxAttempts: config.agent.maxAttempts,
       retryDelayMs: config.agent.retryDelayMs
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/config/llm") {
+    const body = (await readJson(request)) as LlmConfigRequest;
+    await updateLlmConfig(body);
+    const config = loadConfig();
+    sendJson(response, 200, {
+      model: config.vlm.model,
+      baseURL: config.vlm.baseURL,
+      hasApiKey: Boolean(config.vlm.apiKey)
     });
     return;
   }
@@ -213,6 +232,71 @@ function createJob(body: RunRequest): Job {
     updatedAt: now,
     logs: ["Queued from web console."]
   };
+}
+
+async function updateLlmConfig(body: LlmConfigRequest): Promise<void> {
+  const baseURL = normalizeOptionalString(body.baseURL);
+  const model = normalizeOptionalString(body.model);
+  const apiKey = normalizeOptionalString(body.apiKey);
+
+  if (baseURL !== undefined && baseURL && !isLikelyHttpUrl(baseURL)) {
+    throw new Error("VLM_BASE_URL must start with http:// or https://.");
+  }
+
+  const updates: Record<string, string> = {};
+  if (baseURL !== undefined) updates.VLM_BASE_URL = baseURL;
+  if (model !== undefined) updates.VLM_MODEL = model;
+  if (body.clearApiKey) {
+    updates.VLM_API_KEY = "";
+  } else if (apiKey) {
+    updates.VLM_API_KEY = apiKey;
+  }
+
+  if (Object.keys(updates).length === 0) return;
+  await writeDotEnvUpdates(path.resolve(".env"), updates);
+  for (const [key, value] of Object.entries(updates)) {
+    process.env[key] = value;
+  }
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new Error("LLM config fields must be strings.");
+  return value.trim();
+}
+
+function isLikelyHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function writeDotEnvUpdates(envPath: string, updates: Record<string, string>): Promise<void> {
+  const existing = fs.existsSync(envPath) ? await fsp.readFile(envPath, "utf8") : "";
+  const lines = existing ? existing.split(/\r?\n/) : [];
+  const remaining = new Set(Object.keys(updates));
+  const nextLines = lines.map((line) => {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (!match || !remaining.has(match[1])) return line;
+    const key = match[1];
+    remaining.delete(key);
+    return `${key}=${formatEnvValue(updates[key])}`;
+  });
+
+  for (const key of remaining) {
+    nextLines.push(`${key}=${formatEnvValue(updates[key])}`);
+  }
+
+  const output = `${nextLines.join("\n").replace(/\n*$/, "")}\n`;
+  await fsp.writeFile(envPath, output, "utf8");
+}
+
+function formatEnvValue(value: string): string {
+  if (/^[A-Za-z0-9_./:@-]*$/.test(value)) return value;
+  return JSON.stringify(value);
 }
 
 function summarizeJob(job: Job): object {
