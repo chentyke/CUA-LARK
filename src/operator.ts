@@ -90,6 +90,15 @@ export class LarkOperator {
     return [...this.screenshots];
   }
 
+  recordSystemEvent(message: string, data?: unknown): void {
+    this.events.push({
+      timestamp: nowIso(),
+      type: "system",
+      message,
+      data
+    });
+  }
+
   private async archiveScreenshot(base64: string): Promise<void> {
     await fs.mkdir(this.options.screenshotDir, { recursive: true });
     const filename = `screenshot-${timestampForId()}-${String(this.screenshots.length + 1).padStart(3, "0")}.png`;

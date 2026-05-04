@@ -78,6 +78,32 @@ describe("model compatibility", () => {
     expect(repairMiMoActionPrediction(prediction)).toBe(prediction);
   });
 
+  it("strips extra JSON after an otherwise valid UI-TARS action", () => {
+    const repaired = repairMiMoActionPrediction(`Thought: Click the close button.
+Action: click(start_box='[375,225,375,225]')
+\`\`\`json
+[
+  {"action": "click", "start_point": [375, 225]}
+]
+\`\`\``);
+
+    expect(repaired).toBe("Thought: Click the close button.\nAction: click(start_box='[375,225,375,225]')");
+  });
+
+  it("normalizes 0-1 decimal coordinates in existing function actions", () => {
+    const repaired = repairMiMoActionPrediction("Thought: Click search.\nAction: click(start_box='[0.114,0.056,0.196,0.076]')");
+
+    expect(repaired).toBe("Thought: Click search.\nAction: click(start_box='[114,56,196,76]')");
+  });
+
+  it("turns explanatory non-action MiMo output into a safe wait action", () => {
+    const repaired = repairMiMoActionPrediction(
+      "**Core change reason:** The preferences window closes, revealing the Lark application underneath."
+    );
+
+    expect(repaired).toBe("Thought: Use the next UI-TARS action converted from the model response.\nAction: wait()");
+  });
+
   it("can repair MiMo action output inside chat completion responses", async () => {
     const originalFetch = globalThis.fetch;
     const mockedFetch = vi.fn(async () => {

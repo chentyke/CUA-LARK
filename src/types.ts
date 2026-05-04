@@ -1,4 +1,4 @@
-export type Product = "im" | "docs" | "calendar" | "cross-product" | "custom";
+export type Product = "im" | "docs" | "calendar" | "base" | "vc" | "mail" | "cross-product" | "custom";
 
 export type CaseStatus = "passed" | "failed" | "skipped";
 

@@ -62,10 +62,14 @@ export function sanitizeMiMoChatBody(body: unknown): unknown {
 
 export function repairMiMoActionPrediction(prediction: string): string {
   const existingAction = extractExistingFunctionAction(prediction);
-  if (existingAction) return prediction;
+  if (existingAction) {
+    return normalizeActionPrediction(prediction, existingAction);
+  }
 
   const actionCalls = extractJsonActionCalls(prediction);
-  if (!actionCalls.length) return prediction;
+  if (!actionCalls.length) {
+    return normalizeActionPrediction(prediction, fallbackActionFromText(prediction));
+  }
 
   const thought = extractThought(prediction) ?? "Use the next UI-TARS action converted from the model response.";
   return `Thought: ${thought}\nAction: ${actionCalls.join("\n\n")}`;
@@ -138,9 +142,27 @@ function repairChatCompletionBody(body: unknown): boolean {
 
 function extractExistingFunctionAction(prediction: string): string | undefined {
   const actionText = prediction.split(/Action[:：]/).pop()?.trim() ?? prediction.trim();
-  return /^(click|left_double|right_single|drag|hotkey|type|scroll|wait|finished|call_user)\s*\(/m.test(actionText)
-    ? actionText
-    : undefined;
+  const match = actionText.match(/\b(click|left_double|right_single|drag|hotkey|type|scroll|wait|finished|call_user)\s*\([^)]*\)/m);
+  return match ? normalizeFunctionActionCall(match[0]) : undefined;
+}
+
+function normalizeActionPrediction(prediction: string, action: string): string {
+  const thought = extractThought(prediction) ?? "Use the next UI-TARS action converted from the model response.";
+  const normalized = `Thought: ${thought}\nAction: ${action}`;
+  return prediction.trim() === normalized ? prediction : normalized;
+}
+
+function fallbackActionFromText(prediction: string): string {
+  const lower = prediction.toLowerCase();
+  if (/\b(done|complete|completed|finish|finished|success|succeeded)\b/.test(lower)) return "finished()";
+  return "wait()";
+}
+
+function normalizeFunctionActionCall(call: string): string {
+  return call.replace(/\b(start_box|end_box)=['"](\[[^\]]+\])['"]/g, (_match, key: string, value: string) => {
+    const normalized = normalizeBox(value);
+    return normalized ? `${key}='${normalized}'` : `${key}='${value}'`;
+  });
 }
 
 function extractThought(prediction: string): string | undefined {
@@ -292,6 +314,7 @@ const MIMO_ACTION_FORMAT_RULES = `## Provider Compatibility Rules
 Thought: one concise sentence about the next target.
 Action: one function call from the action space.
 - Coordinates use the UI-TARS 0-1000 screen coordinate scale. For a click point, repeat the same point as a box: click(start_box='[x,y,x,y]').
+- Never use 0-1 decimal coordinates. If you estimate a relative point such as 0.42, convert it to 420 before returning the action.
 - Valid examples:
 Thought: Click the Cloud Documents entry in the left sidebar.
 Action: click(start_box='[54,225,54,225]')

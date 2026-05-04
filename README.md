@@ -2,7 +2,7 @@
 
 CUA-Lark is a UI-TARS based desktop testing agent for Lark. It uses screenshots, a vision-language model, and desktop mouse/keyboard control to execute GUI test cases like a real user.
 
-The first release targets macOS and `/Applications/Lark.app`. It includes IM, Docs, Calendar, and cross-product demo cases, plus JSON/Markdown/HTML reports.
+The first release targets macOS and `/Applications/Lark.app`. It includes IM, Docs, Calendar, and cross-product demo cases, primitive GUI action sequences, natural-language test execution, plus JSON/Markdown/HTML reports.
 
 ## Quick Start
 
@@ -45,7 +45,9 @@ npm run cua -- doctor
 npm run cua -- list
 npm run cua -- run --case im-send-text --dry-run
 npm run cua -- run --instruction "在IM中搜索测试群并发送Hello World" --dry-run
+npm run cua -- ops --dry-run --actions '[{"type":"click","x":100,"y":100},{"type":"typeText","text":"Hello World"},{"type":"hotkey","keys":["cmd","a"]}]'
 npm run cua -- eval --suite standard --dry-run
+npm run submit -- --suite standard --dry-run
 ```
 
 Remove `--dry-run` only after Lark is logged in, the VLM config is set, and macOS permissions are ready.
@@ -66,6 +68,13 @@ Open System Settings, search each permission name, and add your terminal applica
 - `calendar-create-event`: create a tomorrow 2 PM event, optionally invite an attendee, verify event.
 - `cross-docs-im-calendar`: create Docs content, send IM reference, create Calendar reminder.
 
+## Capability Coverage
+
+- Basic GUI actions: `ops` executes JSON sequences for click, double-click, right-click, drag, scroll, text input, hotkeys, and waits.
+- Natural-language tests: `run --instruction` accepts Chinese or English task descriptions and infers IM, Docs, Calendar, Base, VC, Mail, or custom targets.
+- Product coverage: the real `standard` suite covers IM, Docs, and Calendar; the `demo` suite covers cross-product Docs -> IM -> Calendar flow.
+- Advanced handling: popup/failure hints, verifier-driven corrective retries, recipient pre-send guard, screenshot re-encoding, and submission evidence generation.
+
 ## Artifacts
 
 Each run writes to `artifacts/runs/<run-id>/`:
@@ -74,6 +83,12 @@ Each run writes to `artifacts/runs/<run-id>/`:
 - `report.md`
 - `report.html`
 - `screenshots/`
+
+Competition submission runs also write to `artifacts/runs/<run-id>/submission/`:
+
+- `submission.md`
+- `submission.html`
+- `evidence/*.png`
 
 ## Retry Behavior
 

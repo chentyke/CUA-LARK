@@ -2,11 +2,12 @@ import type { PlannedCase, PlannedStep, Product, TestCase } from "./types.js";
 
 export class Planner {
   fromCase(testCase: TestCase): PlannedCase {
-    const steps = testCase.logicalSteps.map<PlannedStep>((objective, index) => ({
-      index: index + 1,
-      objective,
-      successCriteria: index === testCase.logicalSteps.length - 1 ? testCase.successCriteria : []
-    }));
+    const objective = [
+      testCase.instruction,
+      "Use this checklist as guidance, but complete the case as one end-to-end desktop task:",
+      ...testCase.logicalSteps.map((step, index) => `${index + 1}. ${step}`),
+      "Before finishing, leave the strongest success evidence visible on screen."
+    ].join("\n");
 
     return {
       id: testCase.id,
@@ -18,7 +19,13 @@ export class Planner {
       maxSteps: testCase.maxSteps,
       timeoutMs: testCase.timeoutMs,
       tags: testCase.tags,
-      steps
+      steps: [
+        {
+          index: 1,
+          objective,
+          successCriteria: testCase.successCriteria
+        }
+      ]
     };
   }
 
@@ -49,6 +56,9 @@ function inferProduct(instruction: string): Product {
   const lower = instruction.toLowerCase();
   if (lower.includes("calendar") || instruction.includes("日历") || instruction.includes("日程")) return "calendar";
   if (lower.includes("doc") || instruction.includes("文档")) return "docs";
+  if (lower.includes("base") || instruction.includes("多维表格")) return "base";
+  if (lower.includes("meeting") || lower.includes("vc") || instruction.includes("视频会议") || instruction.includes("会议")) return "vc";
+  if (lower.includes("mail") || lower.includes("email") || instruction.includes("邮箱") || instruction.includes("邮件")) return "mail";
   if (lower.includes("im") || instruction.includes("聊天") || instruction.includes("消息")) return "im";
   return "custom";
 }

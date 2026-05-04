@@ -5,7 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { LarkAgent } from "./agent.js";
-import { casesForSuite, getCaseById, listCases, materializeCase } from "./cases.js";
+import { casesForSuite, getCaseById, listCases, materializeCase, validateCaseInputs } from "./cases.js";
 import { loadConfig, validateRuntimeConfig } from "./config.js";
 import { formatDoctor, runDoctor } from "./doctor.js";
 import { Planner } from "./planner.js";
@@ -136,6 +136,8 @@ async function runJob(job: Job, body: RunRequest): Promise<void> {
   const dryRun = Boolean(body.dryRun);
   const issues = validateRuntimeConfig(config, dryRun);
   if (issues.length) throw new Error(issues.join(" "));
+  const inputIssues = validateRunRequestInputs(config, dryRun, body);
+  if (inputIssues.length) throw new Error(inputIssues.join(" "));
 
   const startedAt = nowIso();
   const runDir = await createRunDirectory(config.artifacts.runsDir, job.id);
@@ -180,6 +182,17 @@ function buildPlannedCases(planner: Planner, config: ReturnType<typeof loadConfi
   const instruction = body.instruction?.trim();
   if (!instruction) throw new Error("instruction is required.");
   return [planner.fromInstruction(instruction)];
+}
+
+function validateRunRequestInputs(config: ReturnType<typeof loadConfig>, dryRun: boolean, body: RunRequest): string[] {
+  if (body.mode === "case") {
+    const testCase = body.caseId ? getCaseById(body.caseId) : undefined;
+    return testCase ? validateCaseInputs([testCase], config, dryRun) : [];
+  }
+  if (body.mode === "suite") {
+    return validateCaseInputs(casesForSuite(body.suite ?? "standard"), config, dryRun);
+  }
+  return [];
 }
 
 function createJob(body: RunRequest): Job {

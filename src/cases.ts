@@ -30,9 +30,9 @@ const baseCases: TestCase[] = [
     product: "docs",
     description: "Create a new Lark document, enter a title and body, and verify the content.",
     instruction:
-      "Open Lark Docs, create a new document named 'CUA-Lark 项目周报 {timestamp}', enter title '2026年Q2项目进展', add body text '自动化桌面测试记录 {timestamp}', and confirm both texts are visible.",
+      "Open Lark Docs, create a new document, add heading '2026年Q2项目进展', add body text '自动化桌面测试记录 {timestamp}', and confirm both texts are visible.",
     successCriteria: [
-      "A document titled 'CUA-Lark 项目周报 {timestamp}' or containing '2026年Q2项目进展' is visible.",
+      "The new document content contains the heading '2026年Q2项目进展'.",
       "The document body contains '自动化桌面测试记录 {timestamp}'."
     ],
     preconditions: ["Lark is logged in.", "The account can create Docs."],
@@ -109,6 +109,15 @@ export function casesForSuite(suite: string): TestCase[] {
   return cases.filter((testCase) => testCase.tags.includes(suite));
 }
 
+export function validateCaseInputs(testCases: TestCase[], config: AppConfig, dryRun: boolean): string[] {
+  if (dryRun) return [];
+  const issues: string[] = [];
+  if (testCases.some((testCase) => caseUsesVariable(testCase, "testChat")) && !config.lark.testChat.trim()) {
+    issues.push("LARK_TEST_CHAT is required for real IM or cross-product runs. Set it to a safe test chat before running.");
+  }
+  return issues;
+}
+
 export function materializeCase(testCase: TestCase, config: AppConfig, timestamp = timestampForId()): TestCase {
   const tomorrow = tomorrowAtTwo();
   const vars: Record<string, string> = {
@@ -129,4 +138,11 @@ export function materializeCase(testCase: TestCase, config: AppConfig, timestamp
 
 function interpolate(input: string, vars: Record<string, string>): string {
   return input.replace(/\{(\w+)\}/g, (_match, key: string) => vars[key] ?? "");
+}
+
+function caseUsesVariable(testCase: TestCase, variable: string): boolean {
+  const needle = `{${variable}}`;
+  return [testCase.instruction, ...testCase.successCriteria, ...testCase.preconditions, ...testCase.logicalSteps].some((item) =>
+    item.includes(needle)
+  );
 }

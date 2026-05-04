@@ -3,6 +3,7 @@ import type { AppConfig, CaseRunResult, PlannedCase, PlannedStep, StepResult, Ve
 import { durationMs, nowIso } from "./time.js";
 import { compatibleSystemPrompt, modelConfigWithCompat } from "./modelCompat.js";
 import { PopupGuard } from "./popupGuard.js";
+import { runDeterministicStandardCase } from "./standardGuard.js";
 import { Verifier } from "./verifier.js";
 
 interface RuntimeOperator {
@@ -10,6 +11,7 @@ interface RuntimeOperator {
   screenshot(): Promise<unknown>;
   getEvents(): Array<unknown>;
   getScreenshots(): string[];
+  recordSystemEvent?(message: string, data?: unknown): void;
 }
 
 export class LarkAgent {
@@ -36,6 +38,44 @@ export class LarkAgent {
 
     try {
       await operator.focusApp();
+      const deterministicStep = await runDeterministicStandardCase({
+        plannedCase,
+        config: this.config,
+        operator,
+        verifier: this.verifier
+      });
+      if (deterministicStep) {
+        steps.push(deterministicStep);
+        let verification: VerificationResult | undefined;
+        if (deterministicStep.status === "passed") {
+          verification = await this.verifier.verify({
+            instruction: plannedCase.instruction,
+            successCriteria: plannedCase.successCriteria,
+            screenshots: operator.getScreenshots(),
+            dryRun: false
+          });
+        }
+
+        const finishedAt = nowIso();
+        const status = deterministicStep.status === "passed" && verification?.passed ? "passed" : "failed";
+        return {
+          id: plannedCase.id,
+          product: plannedCase.product,
+          description: plannedCase.description,
+          instruction: plannedCase.instruction,
+          status,
+          startedAt,
+          finishedAt,
+          durationMs: durationMs(startedAt, finishedAt),
+          steps,
+          successCriteria: plannedCase.successCriteria,
+          screenshots: operator.getScreenshots(),
+          modelCalls: steps.reduce((total, step) => total + step.modelCalls, 0),
+          verification,
+          failureReason: status === "failed" ? verification?.reason ?? deterministicStep.failureReason : undefined
+        };
+      }
+
       const maxAttempts = this.config.agent.retryOnVerificationFailure ? this.config.agent.maxAttempts : 1;
       let verification: VerificationResult | undefined;
       let failureReason: string | undefined;

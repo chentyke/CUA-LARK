@@ -1,7 +1,15 @@
 import fs from "node:fs/promises";
+import { Jimp } from "jimp";
 import OpenAI from "openai";
 import { openAIClientCompatOptions } from "./modelCompat.js";
 import type { AppConfig, VerificationResult } from "./types.js";
+
+export interface VerificationImage {
+  base64: string;
+  mimeType: "image/png";
+  width: number;
+  height: number;
+}
 
 export class Verifier {
   constructor(private readonly config: AppConfig) {}
@@ -31,7 +39,7 @@ export class Verifier {
       };
     }
 
-    const imageBase64 = await fs.readFile(latestScreenshot, "base64");
+    const image = await prepareVerificationImage(latestScreenshot);
     const client = new OpenAI({
       baseURL: this.config.vlm.baseURL,
       apiKey: this.config.vlm.apiKey,
@@ -55,7 +63,7 @@ export class Verifier {
             {
               type: "image_url",
               image_url: {
-                url: `data:image/png;base64,${imageBase64}`
+                url: `data:${image.mimeType};base64,${image.base64}`
               }
             }
           ]
@@ -66,6 +74,32 @@ export class Verifier {
     const raw = completion.choices[0]?.message?.content ?? "";
     return parseVerificationResponse(raw);
   }
+}
+
+export async function prepareVerificationImage(filePath: string): Promise<VerificationImage> {
+  const maxPixels = Number(process.env.CUA_VERIFIER_MAX_IMAGE_PIXELS ?? 900000);
+  const input = await fs.readFile(filePath);
+  const image = await Jimp.read(input);
+  const { width, height } = image.bitmap;
+  let output = image;
+
+  if (Number.isFinite(maxPixels) && maxPixels > 0 && width * height > maxPixels) {
+    const factor = Math.sqrt(maxPixels / (width * height));
+    const resized = image.clone() as typeof image;
+    resized.resize({
+      w: Math.max(1, Math.floor(width * factor)),
+      h: Math.max(1, Math.floor(height * factor))
+    });
+    output = resized;
+  }
+
+  const buffer = await output.getBuffer("image/png", { quality: 80 });
+  return {
+    base64: buffer.toString("base64"),
+    mimeType: "image/png",
+    width: output.bitmap.width,
+    height: output.bitmap.height
+  };
 }
 
 export function buildVerificationPrompt(params: { instruction: string; successCriteria: string[] }): string {
@@ -82,17 +116,14 @@ export function buildVerificationPrompt(params: { instruction: string; successCr
 }
 
 export function parseVerificationResponse(raw: string): VerificationResult {
-  try {
-    const parsed = JSON.parse(raw) as Partial<VerificationResult>;
-    return {
-      passed: Boolean(parsed.passed),
-      confidence: normalizeConfidence(parsed.confidence),
-      reason: typeof parsed.reason === "string" ? parsed.reason : "No verifier reason was provided.",
-      evidence: Array.isArray(parsed.evidence) ? parsed.evidence.map(String) : [],
-      raw
-    };
-  } catch {
-    const passed = /\b(pass|passed|success|true|通过|成功)\b/i.test(raw);
+  const parsedJson = parseVerifierJson(raw);
+  if (parsedJson) {
+    return verificationFromParsedJson(parsedJson, raw);
+  }
+
+  const explicitBoolean = raw.match(/\bpassed\b\s*[:=]\s*(true|false)\b/i)?.[1];
+  if (explicitBoolean) {
+    const passed = explicitBoolean.toLowerCase() === "true";
     return {
       passed,
       confidence: passed ? 0.5 : 0,
@@ -101,6 +132,48 @@ export function parseVerificationResponse(raw: string): VerificationResult {
       raw
     };
   }
+
+  const passed = /\b(pass|passed|success|true|通过|成功)\b/i.test(raw);
+  return {
+    passed,
+    confidence: passed ? 0.5 : 0,
+    reason: raw.trim() || "Verifier response was empty or not valid JSON.",
+    evidence: [],
+    raw
+  };
+}
+
+function parseVerifierJson(raw: string): Partial<VerificationResult> | undefined {
+  for (const candidate of verifierJsonCandidates(raw)) {
+    try {
+      const parsed = JSON.parse(candidate) as Partial<VerificationResult>;
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
+function verifierJsonCandidates(raw: string): string[] {
+  const candidates: string[] = [raw.trim()];
+  for (const match of raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+    if (match[1]) candidates.push(match[1].trim());
+  }
+  const objectStart = raw.indexOf("{");
+  const objectEnd = raw.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) candidates.push(raw.slice(objectStart, objectEnd + 1));
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function verificationFromParsedJson(parsed: Partial<VerificationResult>, raw: string): VerificationResult {
+  return {
+    passed: parsed.passed === true,
+    confidence: normalizeConfidence(parsed.confidence),
+    reason: typeof parsed.reason === "string" ? parsed.reason : "No verifier reason was provided.",
+    evidence: Array.isArray(parsed.evidence) ? parsed.evidence.map(String) : [],
+    raw
+  };
 }
 
 function normalizeConfidence(value: unknown): number {

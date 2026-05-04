@@ -11,15 +11,18 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "cua": "tsx src/cli.ts",
+    "submit": "tsx src/cli.ts submit",
     "dev": "tsx src/server.ts",
     "frontend": "tsx src/server.ts",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@computer-use/nut-js": "^4.2.0",
     "@ui-tars/operator-nut-js": "1.2.3",
     "@ui-tars/sdk": "1.2.3",
     "commander": "^13.1.0",
     "dotenv": "^16.4.7",
+    "jimp": "^1.6.0",
     "openai": "^5.5.1",
     "uuid": "^14.0.0"
   },

@@ -3,6 +3,7 @@ import os from "node:os";
 import { execFileSync } from "node:child_process";
 import type { AppConfig } from "./types.js";
 import { validateRuntimeConfig } from "./config.js";
+import { advancedCapabilityRows, coreCapabilityRows, productCoverageRows } from "./capabilities.js";
 
 export interface DoctorCheck {
   name: string;
@@ -28,10 +29,22 @@ export function runDoctor(config: AppConfig): DoctorCheck[] {
   checks.push(checkCommand("open", "macOS open command"));
   checks.push(checkVlm(config));
   checks.push({
+    name: "Lark test chat",
+    status: config.lark.testChat ? "ok" : "warn",
+    detail: config.lark.testChat
+      ? "Configured. Use a disposable chat for real IM and cross-product runs."
+      : "Not configured. Set LARK_TEST_CHAT before real IM and standard suite runs."
+  });
+  checks.push({
     name: "macOS permissions",
     status: "warn",
     detail:
       "Verify Terminal or your Node runner has Accessibility and Screen Recording permissions in System Settings."
+  });
+  checks.push({
+    name: "Core capability coverage",
+    status: "ok",
+    detail: `${coreCapabilityRows.length} core requirement groups, ${productCoverageRows.length} product/demo rows, ${advancedCapabilityRows.length} advanced rows documented.`
   });
   return checks;
 }
