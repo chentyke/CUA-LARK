@@ -38,6 +38,11 @@ export class LarkAgent {
 
     try {
       await operator.focusApp();
+      const maxAttempts = this.config.agent.retryOnVerificationFailure ? this.config.agent.maxAttempts : 1;
+      let verification: VerificationResult | undefined;
+      let failureReason: string | undefined;
+      let nextAttempt = 1;
+
       const deterministicStep = await runDeterministicStandardCase({
         plannedCase,
         config: this.config,
@@ -46,7 +51,8 @@ export class LarkAgent {
       });
       if (deterministicStep) {
         steps.push(deterministicStep);
-        let verification: VerificationResult | undefined;
+        nextAttempt = 2;
+
         if (deterministicStep.status === "passed") {
           verification = await this.verifier.verify({
             instruction: plannedCase.instruction,
@@ -54,33 +60,21 @@ export class LarkAgent {
             screenshots: operator.getScreenshots(),
             dryRun: false
           });
+          if (verification.passed) {
+            nextAttempt = maxAttempts + 1;
+          } else {
+            failureReason = verification.reason;
+            if (nextAttempt <= maxAttempts) {
+              steps.push(buildRetryMarkerStep(steps.length + 1, nextAttempt, verification, operator));
+              await waitForRetry(this.config.agent.retryDelayMs, 1);
+            }
+          }
+        } else {
+          failureReason = deterministicStep.failureReason;
         }
-
-        const finishedAt = nowIso();
-        const status = deterministicStep.status === "passed" && verification?.passed ? "passed" : "failed";
-        return {
-          id: plannedCase.id,
-          product: plannedCase.product,
-          description: plannedCase.description,
-          instruction: plannedCase.instruction,
-          status,
-          startedAt,
-          finishedAt,
-          durationMs: durationMs(startedAt, finishedAt),
-          steps,
-          successCriteria: plannedCase.successCriteria,
-          screenshots: operator.getScreenshots(),
-          modelCalls: steps.reduce((total, step) => total + step.modelCalls, 0),
-          verification,
-          failureReason: status === "failed" ? verification?.reason ?? deterministicStep.failureReason : undefined
-        };
       }
 
-      const maxAttempts = this.config.agent.retryOnVerificationFailure ? this.config.agent.maxAttempts : 1;
-      let verification: VerificationResult | undefined;
-      let failureReason: string | undefined;
-
-      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      for (let attempt = nextAttempt; attempt <= maxAttempts; attempt += 1) {
         const attemptSteps = attempt === 1 ? plannedCase.steps : buildRetrySteps(plannedCase, attempt, failureReason);
         try {
           for (const step of attemptSteps) {

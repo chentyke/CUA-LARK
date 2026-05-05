@@ -59,6 +59,12 @@ describe("verifier", () => {
     expect(result.confidence).toBe(0);
   });
 
+  it("does not treat negative non-JSON verifier responses as passing", () => {
+    expect(parseVerificationResponse("not success: wrong chat").passed).toBe(false);
+    expect(parseVerificationResponse("The task did not pass because the target message is absent.").passed).toBe(false);
+    expect(parseVerificationResponse("未成功：没有看到目标消息").passed).toBe(false);
+  });
+
   it("re-encodes and downsizes verifier screenshots to a valid PNG payload", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "lark-cua-verifier-"));
     const screenshotPath = path.join(tempDir, "large.png");

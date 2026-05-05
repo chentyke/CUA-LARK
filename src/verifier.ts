@@ -121,12 +121,21 @@ export function parseVerificationResponse(raw: string): VerificationResult {
     return verificationFromParsedJson(parsedJson, raw);
   }
 
-  const explicitBoolean = raw.match(/\bpassed\b\s*[:=]\s*(true|false)\b/i)?.[1];
-  if (explicitBoolean) {
-    const passed = explicitBoolean.toLowerCase() === "true";
+  const explicitBoolean = raw.match(/\bpassed\b\s*[:=]\s*(true|false)\b/i)?.[1]?.toLowerCase();
+  if (explicitBoolean === "false" || hasNegativeVerificationSignal(raw)) {
     return {
-      passed,
-      confidence: passed ? 0.5 : 0,
+      passed: false,
+      confidence: 0,
+      reason: raw.trim() || "Verifier response was empty or not valid JSON.",
+      evidence: [],
+      raw
+    };
+  }
+
+  if (explicitBoolean === "true") {
+    return {
+      passed: true,
+      confidence: 0.5,
       reason: raw.trim() || "Verifier response was empty or not valid JSON.",
       evidence: [],
       raw
@@ -174,6 +183,20 @@ function verificationFromParsedJson(parsed: Partial<VerificationResult>, raw: st
     evidence: Array.isArray(parsed.evidence) ? parsed.evidence.map(String) : [],
     raw
   };
+}
+
+function hasNegativeVerificationSignal(raw: string): boolean {
+  const normalized = raw.replace(/[’']/g, "'").toLowerCase();
+  return [
+    /\b(?:not|never)\s+(?:pass(?:ed)?|success(?:ful)?|succeed(?:ed)?|complete(?:d)?|true)\b/,
+    /\b(?:did|does|is|was|can|could)\s+not\s+(?:pass|succeed|complete|verify|confirm)\b/,
+    /\b(?:isn't|wasn't|can't|cannot)\s+(?:pass(?:ed)?|success(?:ful)?|complete(?:d)?|visible|verified)\b/,
+    /\b(?:failed|failure|unsuccessful)\b/,
+    /\b(?:target|expected|requested).{0,48}\b(?:missing|absent|not visible|not found)\b/,
+    /未(?:通过|成功|完成|看到|发现|显示)/,
+    /没有(?:通过|成功|完成|看到|发现|显示)/,
+    /(?:失败|错误|不存在|不正确)/
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function normalizeConfidence(value: unknown): number {
